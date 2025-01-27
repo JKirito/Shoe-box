@@ -1,7 +1,5 @@
 import axios from "axios";
 
-const API_URL = 'http://localhost:4000/api/auth';
-
 interface LoginResponse {
     user: {
         email: string;
@@ -19,42 +17,60 @@ interface RegisterData {
     adminCode?: string;
 }
 
-// Browser-compatible UUID generation
-const generateUUID = () => {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-        const r = Math.random() * 16 | 0;
-        const v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-    });
-};
+const CLERK_API = 'https://api.clerk.dev/v1';
+const CLIENT_ID = import.meta.env.VITE_CLIENT_ID;
+const CLIENT_SECRET = import.meta.env.VITE_CLIENT_SECRET;
 
-export const login = async (email: string, password: string): Promise<LoginResponse | null> => {
-    // const response = await axios.post(`${API_URL}/login`, {email, password});
-    if(email === password) {
+const clerkApi = axios.create({
+    baseURL: CLERK_API,
+    headers: {
+        'Authorization': `Bearer ${CLIENT_SECRET}`,
+        'Content-Type': 'application/json'
+    }
+});
+
+export const login = async (email: string, password: string): Promise<LoginResponse> => {
+    try {
+        const response = await clerkApi.post('/sign-ins', {
+            identifier: email,
+            password,
+            strategy: 'password'
+        });
+
         return {
             user: {
-                email,
-                role: 'buyer' // Default role for testing
+                email: response.data.email_address,
+                role: 'buyer' // You might want to store role in user metadata
             },
-            token: generateUUID()
+            token: response.data.token
         };
+    } catch (error) {
+        throw new Error('Login failed');
     }
-    return null;
 };
 
 export const register = async (data: RegisterData): Promise<LoginResponse> => {
-    // TODO: Implement actual API call
-    // const response = await axios.post(`${API_URL}/register`, data);
-    // return response.data;
-    
-    // Mock implementation for testing
-    return {
-        user: {
-            email: data.email,
-            role: data.role
-        },
-        token: generateUUID()
-    };
+    try {
+        const response = await clerkApi.post('/users', {
+            email_address: data.email,
+            password: data.password,
+            metadata: {
+                role: data.role,
+                businessName: data.businessName,
+                businessAddress: data.businessAddress
+            }
+        });
+
+        return {
+            user: {
+                email: response.data.email_addresses[0].email_address,
+                role: data.role
+            },
+            token: response.data.id // Clerk user ID as token
+        };
+    } catch (error) {
+        throw new Error('Registration failed');
+    }
 };
 
 const authService = {
